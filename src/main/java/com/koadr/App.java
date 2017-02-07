@@ -14,9 +14,11 @@ public class App {
         final ActorMaterializer materializer = ActorMaterializer.create(system);
         ActorRef emojiActor = system.actorOf(EmojiActor.props());
         ActorRef translatorActor = system.actorOf(EnglishToSpanishActor.props());
+        ActorRef streamer = system.actorOf(SagaStreamActor.props(emojiActor, translatorActor, materializer));
+        streamer.tell(SagaStreamActor.Start.getInstance(), ActorRef.noSender());
         int counter = 100;
         while (counter > 0) {
-            ActorRef saga = system.actorOf(SagaStreamActor.props(emojiActor, translatorActor, materializer));
+            ActorRef saga = system.actorOf(SagaActor.props(streamer));
             saga.tell("hello", ActorRef.noSender());
             counter--;
         }
