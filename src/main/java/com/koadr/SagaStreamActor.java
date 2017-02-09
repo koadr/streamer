@@ -6,20 +6,19 @@ import akka.NotUsed;
 import akka.actor.AbstractLoggingActor;
 import akka.actor.ActorRef;
 import akka.actor.Props;
-import akka.japi.Pair;
 import akka.japi.pf.ReceiveBuilder;
 import akka.stream.*;
 import akka.stream.javadsl.*;
 import akka.util.Timeout;
 
 import java.util.Optional;
-import static com.koadr.SagaActor.AddTranslation;
-import static com.koadr.SagaActor.AddEmoji;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 
 import static akka.pattern.PatternsCS.ask;
+import static com.koadr.SagaActor.AddEmoji;
+import static com.koadr.SagaActor.AddTranslation;
 
 public class SagaStreamActor extends AbstractLoggingActor  {
     private ActorRef sourceActorRef;
@@ -158,12 +157,22 @@ public class SagaStreamActor extends AbstractLoggingActor  {
 
 
     private static RunnableGraph<ActorRef> createGraph(ActorRef emoji, ActorRef translator, Source<Word, ActorRef> in) {
-        final Sink<Pair<Word, Word>, CompletionStage<Done>> sink =
-                Sink.foreach( pair -> System.out.printf("%s %s\n", pair.first(), pair.second()));
+        final Sink<Word, CompletionStage<Done>> sink =
+                Sink.foreach( word -> System.out.printf("Finished: %s\n", word));
 
         return RunnableGraph.fromGraph(GraphDSL.create(in, sink, Keep.left(), (builder, src, sk) -> {
             final UniformFanOutShape<Word, Word> bcast = builder.add(Broadcast.create(2));
-            final FanInShape2<Word, Word, Pair<Word, Word>> zip = builder.add(Zip.create());
+
+            final FanInShape2<Word, Word, Word> zip = builder.add(ZipWith.create((Word w1, Word w2) -> {
+                        Optional<String> ji = w1.getEmoji().isPresent() ? w1.getEmoji() : w2.getEmoji();
+                        Optional<Translation> translation = w1.getTranslation().isPresent() ? w1.getTranslation() : w2.getTranslation();
+                       return new Word(
+                                w1.getCorrelationId(),
+                                w1.getUnderlying(),
+                               translation,
+                               ji
+                            );
+            }));
             Timeout askTimeout = Timeout.apply(5, TimeUnit.SECONDS);
 
             Flow<Word, Word, NotUsed> translatorFlow =
